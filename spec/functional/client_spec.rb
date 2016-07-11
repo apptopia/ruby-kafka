@@ -3,6 +3,10 @@ describe "Producer API", functional: true do
 
   example "listing all topics in the cluster" do
     expect(kafka.topics).to include topic
+
+    topic2 = create_random_topic(num_partitions: 1)
+
+    expect(kafka.topics).to include(topic, topic2)
   end
 
   example "fetching the partition count for a topic" do
@@ -51,5 +55,16 @@ describe "Producer API", functional: true do
     end
 
     expect(values).to eq []
+  end
+
+  example "getting the last offset for a topic partition" do
+    topic = create_random_topic(num_partitions: 1, num_replicas: 1)
+
+    kafka.deliver_message("hello", topic: topic, partition: 0)
+    kafka.deliver_message("world", topic: topic, partition: 0)
+
+    offset = kafka.last_offset_for(topic, 0)
+
+    expect(offset).to eq 1
   end
 end

@@ -4,6 +4,11 @@ Changes and additions to the library will be listed here.
 
 ## Unreleased
 
+- Handle brokers becoming unavailable while in a consumer loop (#228).
+- Handle edge case when consuming from the end of a topic (#230).
+- Ensure the library can be loaded without Bundler (#224).
+- Add an API for fetching the last offset in a partition (#232).
+
 ## v0.3.9
 
 - Improve the default durability setting. The producer setting `required_acks` now defaults to `:all` (#210).

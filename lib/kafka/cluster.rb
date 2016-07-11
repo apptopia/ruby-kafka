@@ -36,6 +36,11 @@ module Kafka
       @target_topics = Set.new
     end
 
+    # Adds a list of topics to the target list. Only the topics on this list will
+    # be queried for metadata.
+    #
+    # @param topics [Array<String>]
+    # @return [nil]
     def add_target_topics(topics)
       new_topics = Set.new(topics) - @target_topics
 
@@ -46,6 +51,15 @@ module Kafka
 
         refresh_metadata!
       end
+    end
+
+    # Clears the list of target topics.
+    #
+    # @see #add_target_topics
+    # @return [nil]
+    def clear_target_topics
+      @target_topics.clear
+      refresh_metadata!
     end
 
     def mark_as_stale!
@@ -109,6 +123,32 @@ module Kafka
     rescue Kafka::ProtocolError
       mark_as_stale!
       raise
+    end
+
+    def resolve_offset(topic, partition, offset)
+      add_target_topics([topic])
+      refresh_metadata_if_necessary!
+      broker = get_leader(topic, partition)
+
+      if offset == :earliest
+        offset = -2
+      elsif offset == :latest
+        offset = -1
+      end
+
+      response = broker.list_offsets(
+        topics: {
+          topic => [
+            {
+              partition: partition,
+              time: offset,
+              max_offsets: 1,
+            }
+          ]
+        }
+      )
+
+      response.offset_for(topic, partition)
     end
 
     def topics
