@@ -1,6 +1,8 @@
 require "openssl"
 require "uri"
 
+require 'ostruct'
+
 require "kafka/cluster"
 require "kafka/producer"
 require "kafka/consumer"
@@ -346,6 +348,11 @@ module Kafka
         min_bytes: min_bytes,
         max_wait_time: max_wait_time,
       )
+      
+      if partition.nil?              
+        partition_count = @cluster.partitions_for(topic).count
+        partition = Partitioner.partition_for_key(partition_count, OpenStruct.new(partition_key: options[:partition_key]))
+      end
 
       operation.fetch_from_partition(topic, partition, offset: offset, max_bytes: max_bytes)
 
