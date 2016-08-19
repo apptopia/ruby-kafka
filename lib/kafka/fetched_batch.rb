@@ -30,8 +30,20 @@ module Kafka
       @messages.empty?
     end
 
+    def first_offset
+      if empty?
+        nil
+      else
+        messages.first.offset
+      end
+    end
+
     def last_offset
-      messages.last.offset
+      if empty?
+        highwater_mark_offset - 1
+      else
+        messages.last.offset
+      end
     end
 
     def offset_lag

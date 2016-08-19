@@ -211,11 +211,13 @@ module Kafka
       )
 
       if buffer_size >= @max_buffer_size
-        buffer_overflow topic, "Max buffer size (#{@max_buffer_size} messages) exceeded"
+        buffer_overflow topic,
+          "Cannot produce to #{topic}, max buffer size (#{@max_buffer_size} messages) reached"
       end
 
       if buffer_bytesize + message.bytesize >= @max_buffer_bytesize
-        buffer_overflow topic, "Max buffer bytesize (#{@max_buffer_bytesize} bytes) exceeded"
+        buffer_overflow topic,
+          "Cannot produce to #{topic}, max buffer bytesize (#{@max_buffer_bytesize} bytes) reached"
       end
 
       @target_topics.add(topic)
@@ -226,6 +228,7 @@ module Kafka
         key: key,
         topic: topic,
         create_time: create_time,
+        message_size: message.bytesize,
         buffer_size: buffer_size,
         max_buffer_size: @max_buffer_size,
       })
@@ -373,7 +376,10 @@ module Kafka
       end
 
       if failed_messages.any?
-        @logger.error "Failed to assign partitions to #{failed_messages.count} messages"
+        failed_messages.group_by(&:topic).each do |topic, messages|
+          @logger.error "Failed to assign partitions to #{messages.count} messages in #{topic}"
+        end
+
         @cluster.mark_as_stale!
       end
 

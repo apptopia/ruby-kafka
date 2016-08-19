@@ -62,13 +62,16 @@ module Kafka
 
       # Whether or not the consumer is currently consuming messages.
       @running = false
+
+      # The maximum number of bytes to fetch from a single partition, by topic.
+      @max_bytes = {}
     end
 
     # Subscribes the consumer to a topic.
     #
     # Typically you either want to start reading messages from the very
     # beginning of the topic's partitions or you simply want to wait for new
-    # messages to be written. In the former case, set `start_from_beginnign`
+    # messages to be written. In the former case, set `start_from_beginning`
     # true (the default); in the latter, set it to false.
     #
     # @param topic [String] the name of the topic to subscribe to.
@@ -79,15 +82,17 @@ module Kafka
     #   only applies when first consuming a topic partition – once the consumer
     #   has checkpointed its progress, it will always resume from the last
     #   checkpoint.
+    # @param max_bytes_per_partition [Integer] the maximum amount of data fetched
+    #   from a single partition at a time.
     # @return [nil]
     def subscribe(topic, options={})
-      default_offset = options[:default_offset]
       start_from_beginning = options[:start_from_beginning].nil? ? true : options[:start_from_beginning]
-
-      default_offset ||= start_from_beginning ? :earliest : :latest
+      default_offset = options[:default_offset] || start_from_beginning ? :earliest : :latest
+      max_bytes_per_partition = options[:max_bytes_per_partition].nil? ? 1048576 : options[:max_bytes_per_partition]
 
       @group.subscribe(topic)
       @offset_manager.set_default_offset(topic, default_offset)
+      @max_bytes[topic] = max_bytes_per_partition
 
       nil
     end
@@ -133,7 +138,15 @@ module Kafka
                 value: message.value,
               )
 
-              yield message
+              begin
+                yield message
+              rescue => e
+                location = "#{message.topic}/#{message.partition} at offset #{message.offset}"
+                backtrace = e.backtrace.join("\n")
+                @logger.error "Exception raised when processing #{location} -- #{e.class}: #{e}\n#{backtrace}"
+
+                raise
+              end
             end
 
             mark_message_as_processed(message)
@@ -144,6 +157,10 @@ module Kafka
             return if !@running
           end
         end
+
+        # We may not have received any messages, but it's still a good idea to
+        # commit offsets if we've processed messages in the last set of batches.
+        @offset_manager.commit_offsets_if_necessary
       end
     end
 
@@ -183,7 +200,17 @@ module Kafka
                 message_count: batch.messages.count,
               )
 
-              yield batch
+              begin
+                yield batch
+              rescue => e
+                offset_range = batch.empty? ? "N/A" : [batch.first_offset, batch.last_offset].join("..")
+                location = "#{batch.topic}/#{batch.partition} in offset range #{offset_range}"
+                backtrace = e.backtrace.join("\n")
+
+                @logger.error "Exception raised when processing #{location} -- #{e.class}: #{e}\n#{backtrace}"
+
+                raise
+              end
             end
 
             mark_message_as_processed(batch.messages.last)
@@ -224,8 +251,22 @@ module Kafka
     end
 
     def join_group
-      @offset_manager.clear_offsets
+      old_generation_id = @group.generation_id
+
       @group.join
+
+      if old_generation_id && @group.generation_id != old_generation_id + 1
+        # We've been out of the group for at least an entire generation, no
+        # sense in trying to hold on to offset data
+        @offset_manager.clear_offsets
+      else
+        # After rejoining the group we may have been assigned a new set of
+        # partitions. Keeping the old offset commits around forever would risk
+        # having the consumer go back and reprocess messages if it's assigned
+        # a partition it used to be assigned to way back. For that reason, we
+        # only keep commits for the partitions that we're still assigned.
+        @offset_manager.clear_offsets_excluding(@group.assigned_partitions)
+      end
     end
 
     def fetch_batches(options={})
@@ -250,14 +291,21 @@ module Kafka
       assigned_partitions.each do |topic, partitions|
         partitions.each do |partition|
           offset = @offset_manager.next_offset_for(topic, partition)
+          max_bytes = @max_bytes.fetch(topic)
 
           @logger.debug "Fetching batch from #{topic}/#{partition} starting at offset #{offset}"
 
-          operation.fetch_from_partition(topic, partition, offset: offset)
+          operation.fetch_from_partition(topic, partition, offset: offset, max_bytes: max_bytes)
         end
       end
 
       operation.execute
+    rescue OffsetOutOfRange => e
+      @logger.error "Invalid offset for #{e.topic}/#{e.partition}, resetting to default offset"
+
+      @offset_manager.seek_to_default(e.topic, e.partition)
+
+      retry
     rescue ConnectionError => e
       @logger.error "Connection error while fetching messages: #{e}"
 

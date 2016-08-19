@@ -3,7 +3,7 @@ require "kafka/round_robin_assignment_strategy"
 
 module Kafka
   class ConsumerGroup
-    attr_reader :assigned_partitions
+    attr_reader :assigned_partitions, :generation_id
 
     def initialize(options={})
       cluster = options[:cluster]
@@ -123,7 +123,7 @@ module Kafka
     rescue UnknownMemberId
       @logger.error "Failed to join group; resetting member id and retrying in 1s..."
 
-      @member_id = nil
+      @member_id = ""
       sleep 1
 
       retry

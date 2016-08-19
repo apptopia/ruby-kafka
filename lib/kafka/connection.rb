@@ -66,7 +66,7 @@ module Kafka
     end
 
     def open?
-      !@socket.nil?
+      !@socket.nil? && !@socket.closed?
     end
 
     def close
@@ -127,7 +127,7 @@ module Kafka
     rescue Errno::ETIMEDOUT => e
       @logger.error "Timed out while trying to connect to #{self}: #{e}"
       raise ConnectionError, e
-    rescue SocketError, Errno::ECONNREFUSED => e
+    rescue SocketError, Errno::ECONNREFUSED, Errno::EHOSTUNREACH => e
       @logger.error "Failed to connect to #{self}: #{e}"
       raise ConnectionError, e
     end

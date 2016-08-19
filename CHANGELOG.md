@@ -4,6 +4,22 @@ Changes and additions to the library will be listed here.
 
 ## Unreleased
 
+## v0.3.14
+
+- Automatically recover from invalid consumer checkpoints.
+- Minimize the number of times messages are reprocessed after a consumer group resync.
+- Improve instrumentation of the async producer.
+
+## v0.3.12
+
+- Fix a bug in the consumer.
+
+## v0.3.11
+
+- Fix bug in the simple consumer loop.
+
+## v0.3.10
+
 - Handle brokers becoming unavailable while in a consumer loop (#228).
 - Handle edge case when consuming from the end of a topic (#230).
 - Ensure the library can be loaded without Bundler (#224).

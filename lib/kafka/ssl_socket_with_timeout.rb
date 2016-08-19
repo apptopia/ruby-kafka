@@ -151,6 +151,10 @@ module Kafka
       @ssl_socket.close
     end
 
+    def closed?
+      @tcp_socket.closed? || @ssl_socket.closed?
+    end
+
     def set_encoding(encoding)
       @tcp_socket.set_encoding(encoding)
     end
