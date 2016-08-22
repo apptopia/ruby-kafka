@@ -4,6 +4,10 @@ Changes and additions to the library will be listed here.
 
 ## Unreleased
 
+## v0.3.15.beta1
+
+- Allow pausing consumption of a partition (#268).
+
 ## v0.3.14
 
 - Automatically recover from invalid consumer checkpoints.
